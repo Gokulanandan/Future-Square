@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.FutureSquare" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/desk</item>
+    </style>
+    <color name="desk">#B9844F</color>
+    <color name="icon_bg">#F6F8FC</color>
+</resources>
