@@ -8,6 +8,7 @@ import app.futuresquare.core.Field
 import app.futuresquare.core.FutureSquare
 import app.futuresquare.core.Prediction
 import app.futuresquare.core.Predictor
+import app.futuresquare.core.Reaction
 
 enum class Screen { CREATOR, DESK, FIELDS_CHOICE, PICK_FIELDS, VALUES, BEGIN, STRIKING, RESULT, WHO }
 
@@ -34,6 +35,24 @@ class GameState(private val store: AvatarStore) {
         private set
     var marks by mutableStateOf(BoardMarks())
     var skip by mutableStateOf(false)
+
+    var dog by mutableStateOf<DogMoment?>(null)
+        private set
+    private var dogCount = 0
+
+    var soundOn by mutableStateOf(store.soundOn().also { Sfx.enabled = it })
+        private set
+
+    fun toggleSound() {
+        soundOn = !soundOn
+        Sfx.enabled = soundOn
+        store.setSoundOn(soundOn)
+    }
+
+    fun showDog(reaction: Reaction, caption: String) {
+        if (reaction == Reaction.NONE) return
+        dog = DogMoment(++dogCount, reaction, caption)
+    }
 
     fun avatarBeingMade(): Avatar = creatingFor?.let { store.friend(it) ?: Avatar(girl = true, skin = 2, hairColor = 1, uniform = 2, bag = 1) } ?: player
 
@@ -73,6 +92,7 @@ class GameState(private val store: AvatarStore) {
         lines = 0
         prediction = null
         marks = BoardMarks()
+        dog = null
         screen = Screen.FIELDS_CHOICE
     }
 

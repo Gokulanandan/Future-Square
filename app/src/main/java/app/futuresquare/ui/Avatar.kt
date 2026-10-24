@@ -37,6 +37,9 @@ object AvatarParts {
 class AvatarStore(context: Context) {
     private val prefs = context.getSharedPreferences("avatars", Context.MODE_PRIVATE)
 
+    fun soundOn(): Boolean = prefs.getBoolean("sound", true)
+    fun setSoundOn(on: Boolean) = prefs.edit().putBoolean("sound", on).apply()
+
     fun hasPlayer(): Boolean = prefs.contains(key("me") + ".skin")
     fun player(): Avatar = load("me") ?: Avatar()
     fun savePlayer(a: Avatar) = save("me", a)

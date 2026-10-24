@@ -23,7 +23,14 @@ object Ink {
     val Line = Color(0xFFC9D3E6)
     val Desk = Color(0xFFB9844F)
     val DeskDark = Color(0xFF9C6B3C)
-    val Cover = Color(0xFF2F5DA8)
+    val Cover = Color(0xFFEF6F4C)
+}
+
+/** The dreamy sky behind the game. */
+object Sky {
+    val Top = Color(0xFF5B6CF0)
+    val Middle = Color(0xFF8C6CE8)
+    val Bottom = Color(0xFFF49CC0)
 }
 
 val Hand = FontFamily(

@@ -66,8 +66,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -84,6 +82,8 @@ import androidx.core.content.ContextCompat
 import app.futuresquare.core.Field
 import app.futuresquare.core.FieldKind
 import app.futuresquare.core.FutureSquare
+import app.futuresquare.core.Mood
+import app.futuresquare.core.Reaction
 import app.futuresquare.core.Sentence
 import app.futuresquare.core.Slot
 import kotlinx.coroutines.delay
@@ -91,36 +91,28 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun FutureSquareApp(state: GameState) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Ink.Desk)
-            .drawBehind {
-                // Wood grain on the classroom desk.
-                val step = 46.dp.toPx()
-                var y = step / 2
-                while (y < size.height) {
-                    drawLine(Ink.DeskDark, Offset(0f, y), Offset(size.width, y + 8.dp.toPx()), 2.dp.toPx())
-                    y += step
-                }
+    HappyBackground {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .imePadding(),
+        ) {
+            val place = when (state.screen) {
+                Screen.CREATOR -> 0
+                Screen.DESK -> 1
+                else -> 2
             }
-            .safeDrawingPadding()
-            .imePadding(),
-    ) {
-        val place = when (state.screen) {
-            Screen.CREATOR -> 0
-            Screen.DESK -> 1
-            else -> 2
-        }
-        AnimatedContent(
-            targetState = place,
-            transitionSpec = { (fadeIn(tween(450)) + scaleIn(initialScale = 0.94f)) togetherWith fadeOut(tween(250)) },
-            label = "place",
-        ) { p ->
-            when (p) {
-                0 -> CreatorScreen(state)
-                1 -> DeskScreen(state)
-                else -> PlayScreen(state)
+            AnimatedContent(
+                targetState = place,
+                transitionSpec = { (fadeIn(tween(450)) + scaleIn(initialScale = 0.94f)) togetherWith fadeOut(tween(250)) },
+                label = "place",
+            ) { p ->
+                when (p) {
+                    0 -> CreatorScreen(state)
+                    1 -> DeskScreen(state)
+                    else -> PlayScreen(state)
+                }
             }
         }
     }
@@ -249,11 +241,24 @@ private fun PlayScreen(state: GameState) {
             Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 StudentFigure(state.subject, Modifier.width(40.dp).height(52.dp).bob(2f, 900))
                 Text(
                     if (state.who == YOU) "Your future square" else "${state.who}’s future square",
                     fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Ink.Paper,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (state.soundOn) "🔊" else "🔇",
+                    fontSize = 24.sp,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { state.toggleSound() }
+                        .padding(8.dp),
                 )
             }
             NotebookPage(state.fields, state.marks, draw.value, Modifier.fillMaxWidth())
@@ -289,6 +294,7 @@ private fun PlayScreen(state: GameState) {
         if (state.screen == Screen.RESULT) {
             key(state.prediction) { Confetti(Modifier.fillMaxSize()) }
         }
+        DogPopup(state.dog, Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp))
     }
 }
 
@@ -467,6 +473,7 @@ private fun ColumnScope.BeginPanel(state: GameState) {
             delay(320)
             if (!drawing) break
             state.lines += 1
+            Sfx.line()
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             if (state.lines >= 30) stop()
         }
@@ -571,6 +578,7 @@ private fun ColumnScope.StrikingPanel(state: GameState) {
                 for ((k, idx) in step.path.withIndex()) {
                     if (state.skip) break
                     state.marks = BoardMarks(struck, pencilAt = ring[idx], count = k + 1)
+                    Sfx.tick()
                     delay(if (state.lines > 8) 110L else 220L)
                 }
             }
@@ -579,8 +587,21 @@ private fun ColumnScope.StrikingPanel(state: GameState) {
             state.marks = BoardMarks(struck)
             last = valueOf(hit)
             if (!state.skip) {
+                Sfx.scratch()
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 delay(450)
+                // The field just closed: ring a chime, and let the dog react to what was left.
+                val field = state.fields.first { it.id == hit.fieldId }
+                val left = ring.filter { it.fieldId == field.id && it !in struck }
+                if (left.size == 1) {
+                    Sfx.chime()
+                    val winner = field.values[left.first().valueIndex]
+                    val reaction = Mood.of(field.kind, winner, field.values)
+                    if (reaction != Reaction.NONE) {
+                        state.showDog(reaction, dogCaption(reaction, field.kind, winner))
+                        delay(2400)
+                    }
+                }
             }
         }
         state.marks = BoardMarks(struck, winners = ring.filter { it !in struck }.toSet())
@@ -619,6 +640,18 @@ private fun ColumnScope.ResultPanel(state: GameState) {
     val p = state.prediction ?: return
     val context = LocalContext.current
     val sentence = Sentence.build(state.who, state.fields, p.winners)
+    LaunchedEffect(p) {
+        Sfx.fanfare()
+        if (state.skip) {
+            // Skipped past the per-field reactions, so give one for the whole future.
+            val reactions = state.fields.mapNotNull { f -> p.winners[f.id]?.let { Mood.of(f.kind, it, f.values) } }
+            delay(600)
+            when {
+                Reaction.WOW in reactions -> state.showDog(Reaction.WOW, "WOW! What a future! 🤩")
+                Reaction.LAUGH in reactions -> state.showDog(Reaction.LAUGH, "HA HA HA! 🤣")
+            }
+        }
+    }
     Text(
         if (state.who == YOU) "🔮 Your future" else "🔮 ${state.who}’s future",
         fontSize = 14.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink.Muted,
@@ -657,6 +690,11 @@ private fun ColumnScope.WhoPanel(state: GameState) {
     )
     PrimaryButton("Let’s go", enabled = ok) { state.newRound(name.trim()) }
     SecondaryButton("Make their student first", enabled = ok) { state.makeFriendStudent(name) }
+}
+
+private fun dogCaption(reaction: Reaction, kind: FieldKind, value: String): String {
+    val what = if (kind == FieldKind.RANK) "Rank $value" else value
+    return if (reaction == Reaction.WOW) "WOW! $what! 🤩" else "HA HA HA! $what! 🤣"
 }
 
 // ---------- Small building blocks ----------
