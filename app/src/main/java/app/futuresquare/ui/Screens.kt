@@ -6,8 +6,22 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,6 +58,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -65,6 +81,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import app.futuresquare.core.Field
 import app.futuresquare.core.FieldKind
 import app.futuresquare.core.FutureSquare
 import app.futuresquare.core.Sentence
@@ -90,10 +107,21 @@ fun FutureSquareApp(state: GameState) {
             .safeDrawingPadding()
             .imePadding(),
     ) {
-        when (state.screen) {
-            Screen.CREATOR -> CreatorScreen(state)
-            Screen.DESK -> DeskScreen(state)
-            else -> PlayScreen(state)
+        val place = when (state.screen) {
+            Screen.CREATOR -> 0
+            Screen.DESK -> 1
+            else -> 2
+        }
+        AnimatedContent(
+            targetState = place,
+            transitionSpec = { (fadeIn(tween(450)) + scaleIn(initialScale = 0.94f)) togetherWith fadeOut(tween(250)) },
+            label = "place",
+        ) { p ->
+            when (p) {
+                0 -> CreatorScreen(state)
+                1 -> DeskScreen(state)
+                else -> PlayScreen(state)
+            }
         }
     }
 }
@@ -113,14 +141,14 @@ private fun CreatorScreen(state: GameState) {
         Title(if (forName == null) "Make your student" else "Make $forName’s student", color = Ink.Paper)
         Panel {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                StudentFigure(a, Modifier.width(150.dp).height(200.dp))
+                StudentFigure(a, Modifier.width(150.dp).height(200.dp).bob())
             }
             OptionRow("Student") {
-                Choice("Boy", !a.girl) { a = a.copy(girl = false, hairStyle = 0) }
-                Choice("Girl", a.girl) { a = a.copy(girl = true, hairStyle = 0) }
+                Choice("👦 Boy", !a.girl) { a = a.copy(girl = false, hairStyle = 0) }
+                Choice("👧 Girl", a.girl) { a = a.copy(girl = true, hairStyle = 0) }
             }
             OptionRow("Skin") { AvatarParts.skins.forEachIndexed { i, c -> Swatch(c, a.skin == i) { a = a.copy(skin = i) } } }
-            OptionRow("Hair style") {
+            OptionRow("Hair") {
                 (if (a.girl) AvatarParts.girlHair else AvatarParts.boyHair).forEachIndexed { i, name ->
                     Choice(name, a.hairStyle == i) { a = a.copy(hairStyle = i) }
                 }
@@ -128,7 +156,7 @@ private fun CreatorScreen(state: GameState) {
             OptionRow("Hair colour") { AvatarParts.hairColors.forEachIndexed { i, c -> Swatch(c, a.hairColor == i) { a = a.copy(hairColor = i) } } }
             OptionRow("Glasses") {
                 Choice("No", !a.glasses) { a = a.copy(glasses = false) }
-                Choice("Yes", a.glasses) { a = a.copy(glasses = true) }
+                Choice("👓 Yes", a.glasses) { a = a.copy(glasses = true) }
             }
             OptionRow("Uniform") { AvatarParts.uniforms.forEachIndexed { i, c -> Swatch(c, a.uniform == i) { a = a.copy(uniform = i) } } }
             OptionRow("School bag") { AvatarParts.bags.forEachIndexed { i, c -> Swatch(c, a.bag == i) { a = a.copy(bag = i) } } }
@@ -150,15 +178,17 @@ private fun DeskScreen(state: GameState) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Spacer(Modifier.height(12.dp))
-        Title("Future Square", color = Ink.Paper, size = 56)
+        Box(Modifier.popIn()) { Title("Future Square", color = Ink.Paper, size = 56) }
         Box(
             Modifier
+                .bob(3f, 1800)
+                .pulse(enabled = !opening, amount = 0.02f)
                 .width(230.dp)
                 .height(300.dp)
                 .graphicsLayer {
                     rotationY = flip.value
                     cameraDistance = 16 * density
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+                    transformOrigin = TransformOrigin(0f, 0.5f)
                 }
                 .clip(RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp))
                 .background(Ink.Cover)
@@ -180,10 +210,11 @@ private fun DeskScreen(state: GameState) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StudentFigure(state.player, Modifier.width(80.dp).height(110.dp))
+            StudentFigure(state.player, Modifier.width(80.dp).height(110.dp).bob(4f, 1100))
             Text(
-                "Tap the notebook to open the last page",
-                fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Ink.Paper,
+                "Tap the notebook!",
+                fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = Ink.Paper,
+                modifier = Modifier.pulse(amount = 0.08f),
             )
         }
         TextButton(onClick = { state.editStudent() }) { Text("Change my student", color = Ink.Paper) }
@@ -205,42 +236,69 @@ private fun PlayScreen(state: GameState) {
         state.screen = if (state.screen == Screen.WHO) Screen.RESULT else Screen.FIELDS_CHOICE
     }
     val scroll = rememberScrollState()
-    Column(
-        Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StudentFigure(state.subject, Modifier.width(40.dp).height(52.dp))
-            Text(
-                if (state.who == YOU) "Your future square" else "${state.who}’s future square",
-                fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Ink.Paper,
-            )
-        }
-        NotebookPage(state.fields, state.marks, draw.value, Modifier.fillMaxWidth())
-        Panel {
-            if (!state.squareDrawn) {
-                Say("Drawing the future square…")
-            } else when (state.screen) {
-                Screen.FIELDS_CHOICE -> FieldsChoicePanel(state)
-                Screen.PICK_FIELDS -> PickFieldsPanel(state)
-                Screen.VALUES -> ValuesPanel(state)
-                Screen.BEGIN -> BeginPanel(state)
-                Screen.STRIKING -> StrikingPanel(state)
-                Screen.RESULT -> ResultPanel(state)
-                Screen.WHO -> WhoPanel(state)
-                else -> Unit
-            }
+    LaunchedEffect(state.screen) {
+        when (state.screen) {
+            Screen.STRIKING, Screen.FIELDS_CHOICE -> scroll.animateScrollTo(0)
+            Screen.BEGIN -> { delay(250); scroll.animateScrollTo(scroll.maxValue) }
+            Screen.RESULT -> { delay(400); scroll.animateScrollTo(scroll.maxValue) }
+            else -> Unit
         }
     }
-    // Bring the panel into view when a step changes.
-    LaunchedEffect(state.screen) { if (state.screen == Screen.RESULT) scroll.animateScrollTo(scroll.maxValue) }
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StudentFigure(state.subject, Modifier.width(40.dp).height(52.dp).bob(2f, 900))
+                Text(
+                    if (state.who == YOU) "Your future square" else "${state.who}’s future square",
+                    fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Ink.Paper,
+                )
+            }
+            NotebookPage(state.fields, state.marks, draw.value, Modifier.fillMaxWidth())
+            Panel {
+                if (!state.squareDrawn) {
+                    Say("Drawing the future square… ✏️")
+                } else {
+                    AnimatedContent(
+                        targetState = state.screen,
+                        transitionSpec = {
+                            (slideInHorizontally(tween(300)) { it / 3 } + fadeIn(tween(300))) togetherWith
+                                (slideOutHorizontally(tween(200)) { -it / 3 } + fadeOut(tween(200))) using
+                                SizeTransform(clip = false)
+                        },
+                        label = "panel",
+                    ) { screen ->
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            when (screen) {
+                                Screen.FIELDS_CHOICE -> FieldsChoicePanel(state)
+                                Screen.PICK_FIELDS -> PickFieldsPanel(state)
+                                Screen.VALUES -> ValuesPanel(state)
+                                Screen.BEGIN -> BeginPanel(state)
+                                Screen.STRIKING -> StrikingPanel(state)
+                                Screen.RESULT -> ResultPanel(state)
+                                Screen.WHO -> WhoPanel(state)
+                                else -> Unit
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (state.screen == Screen.RESULT) {
+            key(state.prediction) { Confetti(Modifier.fillMaxSize()) }
+        }
+    }
 }
 
 @Composable
 private fun ColumnScope.FieldsChoicePanel(state: GameState) {
-    Say((if (state.who == YOU) "" else "Let’s predict ${state.who}’s future! ") + "Shall we play with the usual fields, or change them?")
-    PrimaryButton("Use the usual fields") { state.screen = Screen.VALUES }
-    SecondaryButton("Change fields") { state.screen = Screen.PICK_FIELDS }
+    Say(if (state.who == YOU) "How shall we play?" else "Let’s predict ${state.who}’s future!")
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        BigCard("📒", "Usual fields", Modifier.weight(1f), order = 0) { state.screen = Screen.VALUES }
+        BigCard("✨", "Pick my own", Modifier.weight(1f), order = 1) { state.screen = Screen.PICK_FIELDS }
+    }
     TextButton(onClick = { state.editStudent() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
         Text(if (state.who == YOU) "Change my student" else "Change ${state.who}’s student", color = Ink.BlueSoft)
     }
@@ -249,21 +307,24 @@ private fun ColumnScope.FieldsChoicePanel(state: GameState) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColumnScope.PickFieldsPanel(state: GameState) {
-    Say("Pick the fields for your square")
-    state.fields.forEach { f ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(f.name, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, color = Ink.Text)
-            if (state.fields.size > 2) {
-                TextButton(onClick = { state.fields = FutureSquare.removeField(state.fields, f.id) }) { Text("Remove", color = Ink.Red) }
+    Say("Pick your fields")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.fields.forEach { f ->
+            key(f.id) {
+                Box(Modifier.popIn()) {
+                    Choice("${Art.kindIcon(f.kind)} ${f.name}" + if (state.fields.size > 2) "  ✕" else "", true) {
+                        state.fields = FutureSquare.removeField(state.fields, f.id)
+                    }
+                }
             }
         }
     }
-    Small("Add more fields (up to ${FutureSquare.MAX_FIELDS}):")
+    Small("Tap to add (up to ${FutureSquare.MAX_FIELDS})")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FieldKind.entries
             .filter { !it.isClassic || state.fields.none { f -> f.kind == it } }
             .forEach { kind ->
-                Choice("+ ${kind.title}", false, enabled = FutureSquare.canAdd(state.fields, kind)) {
+                Choice("+ ${Art.kindIcon(kind)} ${kind.title}", false, enabled = FutureSquare.canAdd(state.fields, kind), dashed = true) {
                     state.fields = FutureSquare.addField(state.fields, kind)
                 }
             }
@@ -271,65 +332,116 @@ private fun ColumnScope.PickFieldsPanel(state: GameState) {
     PrimaryButton("Done") { state.screen = Screen.VALUES }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** One field at a time, so there is only ever one small choice on screen. */
 @Composable
 private fun ColumnScope.ValuesPanel(state: GameState) {
+    var step by remember { mutableIntStateOf(0) }
+    var forward by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    Say("Choose the values for each field")
-    state.fields.forEach { f ->
-        key(f.id) {
-            var typed by remember { mutableStateOf("") }
-            val add = {
-                val v = typed.trim()
-                if (v.isNotEmpty() && v !in f.values) state.updateField(f.id) { it.copy(values = it.values + v) }
-                typed = ""
-            }
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    f.name.uppercase() + if (f.kind == FieldKind.FRIEND) " · only you know these!" else "",
-                    fontSize = 12.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink.Muted,
-                )
-                val options = (f.kind.suggestions + f.values).distinct()
-                if (options.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        options.forEach { v ->
-                            val on = v in f.values
-                            Choice(v, on) {
-                                state.updateField(f.id) { it.copy(values = if (on) it.values - v else it.values + v) }
-                            }
+    val fields = state.fields
+    val index = step.coerceIn(0, fields.lastIndex)
+
+    Row(
+        Modifier.align(Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        fields.forEachIndexed { i, _ ->
+            val w by animateDpAsState(if (i == index) 24.dp else 8.dp, label = "dot")
+            val c by animateColorAsState(if (i <= index) Ink.Blue else Ink.Line, label = "dotColor")
+            Box(Modifier.width(w).height(8.dp).clip(CircleShape).background(c))
+        }
+    }
+    AnimatedContent(
+        targetState = index,
+        transitionSpec = {
+            val dir = if (forward) 1 else -1
+            (slideInHorizontally(tween(260)) { dir * it / 2 } + fadeIn(tween(260))) togetherWith
+                (slideOutHorizontally(tween(200)) { -dir * it / 2 } + fadeOut(tween(200))) using
+                SizeTransform(clip = false)
+        },
+        label = "field",
+    ) { i ->
+        FieldValuesPicker(state, fields[i])
+    }
+    error?.let { Text(it, color = Ink.Red, fontSize = 14.sp, modifier = Modifier.popIn()) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (index > 0) {
+            OutlinedButton(
+                onClick = { error = null; forward = false; step = index - 1 },
+                modifier = Modifier.height(52.dp),
+            ) { Text("←") }
+        }
+        val last = index == fields.lastIndex
+        Button(
+            onClick = {
+                val f = state.fields[index]
+                if (f.values.size < FutureSquare.MIN_VALUES) {
+                    error = "Pick at least ${FutureSquare.MIN_VALUES} for ${f.name}"
+                } else if (!last) {
+                    error = null
+                    forward = true
+                    step = index + 1
+                } else {
+                    state.lines = 0
+                    state.screen = Screen.BEGIN
+                }
+            },
+            modifier = Modifier.weight(1f).height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Ink.Blue, contentColor = Ink.Paper),
+        ) { Text(if (last) "Ready!" else "Next →", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FieldValuesPicker(state: GameState, field: Field) {
+    // Read the live field so chips update as they are tapped.
+    val f = state.fields.firstOrNull { it.id == field.id } ?: field
+    var typed by remember(f.id) { mutableStateOf("") }
+    val add = {
+        val v = typed.trim()
+        if (v.isNotEmpty() && v !in f.values) state.updateField(f.id) { it.copy(values = it.values + v) }
+        typed = ""
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(Art.kindIcon(f.kind), fontSize = 34.sp, modifier = Modifier.bob(2f, 1000))
+            Text(f.name, fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 32.sp, color = Ink.Blue)
+        }
+        val options = (f.kind.suggestions + f.values).distinct()
+        if (options.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.forEachIndexed { i, v ->
+                    val on = v in f.values
+                    Box(Modifier.popIn(i * 40)) {
+                        Choice(listOfNotNull(Art.known(v), v).joinToString(" "), on, big = true) {
+                            state.updateField(f.id) { it.copy(values = if (on) it.values - v else it.values + v) }
                         }
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = typed,
-                        onValueChange = { typed = it.take(20) },
-                        placeholder = { Text(if (f.kind == FieldKind.FRIEND) "Type a friend’s name" else "Type your own") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { add() }),
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedButton(onClick = add) { Text("Add") }
-                }
             }
         }
-    }
-    error?.let { Text(it, color = Ink.Red, fontSize = 14.sp) }
-    PrimaryButton("Ready!") {
-        val missing = FutureSquare.fieldsMissingValues(state.fields)
-        if (missing.isNotEmpty()) {
-            error = "Add at least ${FutureSquare.MIN_VALUES} values to: " + missing.joinToString { it.name }
-        } else {
-            state.lines = 0
-            state.screen = Screen.BEGIN
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = typed,
+                onValueChange = { typed = it.take(20) },
+                placeholder = { Text(if (f.kind == FieldKind.FRIEND) "Friend’s name" else "Your own") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(onClick = add, modifier = Modifier.height(52.dp)) { Text("+ Add") }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColumnScope.BeginPanel(state: GameState) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     var drawing by remember { mutableStateOf(false) }
     val pending = remember { mutableStateOf<VoiceCommand?>(null) }
     val voice = remember { VoiceCommands(context.applicationContext) { pending.value = it } }
@@ -355,6 +467,7 @@ private fun ColumnScope.BeginPanel(state: GameState) {
             delay(320)
             if (!drawing) break
             state.lines += 1
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             if (state.lines >= 30) stop()
         }
     }
@@ -371,23 +484,53 @@ private fun ColumnScope.BeginPanel(state: GameState) {
             voiceOn = true
             voice.start()
         } else {
-            voiceNote = "No microphone? No problem. Use the button."
+            voiceNote = "No mic? Just tap the button."
         }
     }
 
     Text(
         "Game begins!",
-        fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 56.sp, color = Ink.Red,
-        modifier = Modifier.align(Alignment.CenterHorizontally),
+        fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 58.sp, color = Ink.Red,
+        modifier = Modifier.align(Alignment.CenterHorizontally).popIn(),
     )
-    Small(if (voiceOn) "Listening… say “start”, then “stop” whenever you like." else "Tap Start, then Stop whenever you like. Or use your voice.")
-    Text(
-        if (state.lines == 0) " " else "|".repeat(state.lines),
-        fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Ink.Blue, letterSpacing = 4.sp,
-        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-    )
-    if (state.lines > 0) Small("${state.lines} line${if (state.lines == 1) "" else "s"}")
-    PrimaryButton(if (drawing) "Stop!" else "Start") { if (drawing) stop() else start() }
+    // Tally sticks, one popping in per line, with a running count.
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FlowRow(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            repeat(state.lines) { i ->
+                key(i) {
+                    Box(
+                        Modifier
+                            .popIn()
+                            .width(4.dp)
+                            .height(34.dp)
+                            .graphicsLayer { rotationZ = if (i % 2 == 0) -4f else 3f }
+                            .background(Ink.Blue, RoundedCornerShape(2.dp)),
+                    )
+                }
+            }
+            if (state.lines == 0) Spacer(Modifier.height(34.dp))
+        }
+        AnimatedContent(
+            targetState = state.lines,
+            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+            label = "count",
+        ) { n ->
+            Text("$n", fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 48.sp, color = Ink.Blue)
+        }
+    }
+    Button(
+        onClick = { if (drawing) stop() else start() },
+        modifier = Modifier.fillMaxWidth().height(64.dp).pulse(),
+        colors = ButtonDefaults.buttonColors(containerColor = if (drawing) Ink.Red else Ink.Blue, contentColor = Ink.Paper),
+    ) { Text(if (drawing) "STOP!" else "START", fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp) }
     if (voice.isAvailable) {
         if (!voiceOn) {
             SecondaryButton("🎤 Use my voice") {
@@ -400,10 +543,18 @@ private fun ColumnScope.BeginPanel(state: GameState) {
                 }
             }
         } else {
-            SecondaryButton("Turn voice off") { voiceOn = false; voice.stop() }
+            Row(
+                Modifier.align(Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.size(12.dp).pulse(amount = 0.4f).clip(CircleShape).background(Ink.Red))
+                Text("Listening… say “start” or “stop”", color = Ink.Muted, fontSize = 15.sp)
+                TextButton(onClick = { voiceOn = false; voice.stop() }) { Text("Off", color = Ink.BlueSoft) }
+            }
         }
     }
-    (voiceNote ?: if (!voice.isAvailable) "Voice isn’t available on this phone. Use the button." else null)?.let { Small(it) }
+    (voiceNote ?: if (!voice.isAvailable) "Voice isn’t available on this phone." else null)?.let { Small(it) }
 }
 
 @Composable
@@ -428,17 +579,39 @@ private fun ColumnScope.StrikingPanel(state: GameState) {
             state.marks = BoardMarks(struck)
             last = valueOf(hit)
             if (!state.skip) {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                delay(420)
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                delay(450)
             }
         }
         state.marks = BoardMarks(struck, winners = ring.filter { it !in struck }.toSet())
-        delay(if (state.skip) 200L else 700L)
+        delay(if (state.skip) 300L else 1100L)
         state.screen = Screen.RESULT
     }
-    Say("${state.lines} line${if (state.lines == 1) "" else "s"}! The pencil counts ${state.lines} and strikes…")
-    last?.let { Small("Struck “$it”") }
-    SecondaryButton("Skip to the end") { state.skip = true }
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("✏️", fontSize = 40.sp, modifier = Modifier.bob(4f, 220))
+        Column(Modifier.weight(1f)) {
+            Text("Counting to ${state.lines}…", fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Ink.Blue)
+            AnimatedContent(
+                targetState = last,
+                transitionSpec = { (scaleIn(initialScale = 1.6f) + fadeIn()) togetherWith fadeOut() },
+                label = "struck",
+            ) { v ->
+                Text(if (v == null) " " else "✗ $v", fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Ink.Red)
+            }
+        }
+        AnimatedContent(
+            targetState = state.marks.count,
+            transitionSpec = { (scaleIn(initialScale = 0.4f) + fadeIn(tween(80))) togetherWith fadeOut(tween(80)) },
+            label = "tick",
+        ) { c ->
+            Text(c?.toString() ?: "", fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 52.sp, color = Ink.Red)
+        }
+    }
+    TextButton(onClick = { state.skip = true }, modifier = Modifier.align(Alignment.End)) { Text("Skip ⏩", color = Ink.BlueSoft) }
 }
 
 @Composable
@@ -446,25 +619,33 @@ private fun ColumnScope.ResultPanel(state: GameState) {
     val p = state.prediction ?: return
     val context = LocalContext.current
     val sentence = Sentence.build(state.who, state.fields, p.winners)
-    Small(if (state.who == YOU) "Your future" else "${state.who}’s future")
-    Text(sentence, fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = Ink.Blue, lineHeight = 34.sp)
-    FuturePicture(state.subject, state.fields, p.winners)
-    PrimaryButton("Share this future") {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, "$sentence\n\nPredicted on the last page of my notebook with Future Square ✏️")
+    Text(
+        if (state.who == YOU) "🔮 Your future" else "🔮 ${state.who}’s future",
+        fontSize = 14.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Ink.Muted,
+        modifier = Modifier.popIn(),
+    )
+    TypewriterText(sentence, color = Ink.Blue, fontSize = 30.sp, lineHeight = 34.sp)
+    Box(Modifier.popIn(400)) { FuturePicture(state.subject, state.fields, p.winners) }
+    Column(Modifier.popIn(1800), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PrimaryButton("📤 Share this future") {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "$sentence\n\nPredicted on the last page of my notebook with Future Square ✏️")
+            }
+            context.startActivity(Intent.createChooser(send, "Share your future"))
         }
-        context.startActivity(Intent.createChooser(send, "Share your future"))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            BigCard("🔁", "Play again", Modifier.weight(1f), order = 0) { state.newRound(YOU) }
+            BigCard("🧑‍🤝‍🧑", "Predict a friend", Modifier.weight(1f), order = 1) { state.screen = Screen.WHO }
+        }
     }
-    SecondaryButton("Play again") { state.newRound(YOU) }
-    SecondaryButton("Predict somebody else’s future") { state.screen = Screen.WHO }
 }
 
 @Composable
 private fun ColumnScope.WhoPanel(state: GameState) {
     var name by remember { mutableStateOf("") }
     val ok = name.isNotBlank() && !name.trim().equals(YOU, ignoreCase = true)
-    Say("Whose future shall we predict?")
+    Say("Whose future? 🔮")
     OutlinedTextField(
         value = name,
         onValueChange = { name = it.take(20) },
@@ -500,12 +681,31 @@ private fun Title(text: String, color: Color, size: Int = 40) {
 
 @Composable
 private fun Say(text: String) {
-    Text(text, fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Ink.Blue, lineHeight = 32.sp)
+    Text(text, fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = Ink.Blue, lineHeight = 34.sp)
 }
 
 @Composable
 private fun Small(text: String) {
     Text(text, fontSize = 14.sp, color = Ink.Muted)
+}
+
+/** A big square tile with an emoji: quicker to read than a sentence and a button. */
+@Composable
+private fun BigCard(icon: String, label: String, modifier: Modifier, order: Int, onClick: () -> Unit) {
+    Column(
+        modifier
+            .popIn(order * 120)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Ink.Paper)
+            .border(2.dp, Ink.Blue, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 18.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(icon, fontSize = 40.sp, modifier = Modifier.bob(3f, 1200 + order * 200))
+        Text(label, fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Ink.Blue, textAlign = TextAlign.Center)
+    }
 }
 
 @Composable
@@ -535,32 +735,56 @@ private fun OptionRow(label: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Choice(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+private fun Choice(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    dashed: Boolean = false,
+    big: Boolean = false,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(50)
-    Box(
-        Modifier
-            .clip(shape)
-            .background(if (selected) Ink.Blue else Color.Transparent)
-            .border(1.5.dp, if (enabled) Ink.Blue else Ink.Line, shape)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    ) {
-        Text(text, fontSize = 15.sp, color = when {
+    val bg by animateColorAsState(if (selected) Ink.Blue else Color.Transparent, tween(180), label = "chipBg")
+    val fg by animateColorAsState(
+        when {
             selected -> Ink.Paper
             enabled -> Ink.Blue
             else -> Ink.Muted
-        })
+        },
+        tween(180),
+        label = "chipFg",
+    )
+    val bounce by animateFloatAsState(if (selected) 1.06f else 1f, spring(dampingRatio = 0.35f), label = "chipBounce")
+    Box(
+        Modifier
+            .graphicsLayer {
+                scaleX = bounce
+                scaleY = bounce
+            }
+            .clip(shape)
+            .background(bg)
+            .border(1.5.dp, if (enabled) Ink.Blue else Ink.Line, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = if (big) 16.dp else 14.dp, vertical = if (big) 11.dp else 8.dp),
+    ) {
+        Text(text, fontSize = if (big) 17.sp else 15.sp, color = fg, fontWeight = if (dashed) FontWeight.Normal else FontWeight.Medium)
     }
 }
 
 @Composable
 private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
+    val ring by animateDpAsState(if (selected) 3.dp else 1.dp, label = "swatch")
+    val bounce by animateFloatAsState(if (selected) 1.15f else 1f, spring(dampingRatio = 0.35f), label = "swatchBounce")
     Box(
         Modifier
+            .graphicsLayer {
+                scaleX = bounce
+                scaleY = bounce
+            }
             .size(38.dp)
             .clip(CircleShape)
             .background(color)
-            .border(if (selected) 3.dp else 1.dp, if (selected) Ink.Blue else Ink.Line, CircleShape)
+            .border(ring, if (selected) Ink.Blue else Ink.Line, CircleShape)
             .clickable(onClick = onClick),
     )
 }
