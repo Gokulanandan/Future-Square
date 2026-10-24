@@ -46,6 +46,12 @@ class AvatarStore(context: Context) {
     fun friend(name: String): Avatar? = load("friend." + name.trim().lowercase())
     fun saveFriend(name: String, a: Avatar) = save("friend." + name.trim().lowercase(), a)
 
+    /** The hero id (or [Heroes.STUDENT]) each person plays as; null until one is picked. */
+    fun hero(name: String?): String? = prefs.getString(heroKey(name), null)
+    fun saveHero(name: String?, id: String) = prefs.edit().putString(heroKey(name), id).apply()
+
+    private fun heroKey(name: String?) = if (name == null) "hero.me" else "hero.friend." + name.trim().lowercase()
+
     private fun key(id: String) = "avatar.$id"
 
     private fun load(id: String): Avatar? {
