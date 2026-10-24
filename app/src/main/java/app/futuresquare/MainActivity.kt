@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import app.futuresquare.ui.Ads
 import app.futuresquare.ui.AvatarStore
 import app.futuresquare.ui.FutureSquareApp
 import app.futuresquare.ui.FutureSquareTheme
@@ -21,6 +22,7 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
+        Ads.init(this)
         state = GameState(AvatarStore(applicationContext))
         setContent {
             FutureSquareTheme { FutureSquareApp(state) }

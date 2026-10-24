@@ -29,3 +29,7 @@ The rules live in `core/` as plain Kotlin with unit tests. The Jetpack Compose a
 ```
 
 Needs JDK 17 and the Android SDK (API 34).
+
+## Publish on Google Play
+
+See [docs/PUBLISHING.md](docs/PUBLISHING.md) for release signing, AdMob IDs and the Play Store bundle.
