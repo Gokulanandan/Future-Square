@@ -94,16 +94,18 @@ private fun DrawScope.drawStudent(a: Avatar) {
     drawRoundRect(bag, Offset(cx + w * 0.16f, h * 0.60f), Size(w * 0.22f, h * 0.27f), CornerRadius(w * 0.05f))
 
     // Hair that hangs behind the head.
-    if (a.girl) when (a.hairStyle) {
-        0 -> { // plaits
-            for (side in listOf(-1f, 1f)) {
-                val x = head.x + side * headR * 0.95f
-                drawRoundRect(hair, Offset(x - headR * 0.2f, head.y), Size(headR * 0.4f, headR * 1.9f), CornerRadius(headR * 0.2f))
-                drawCircle(Color(0xFFE5533D), headR * 0.14f, Offset(x, head.y + headR * 1.9f))
+    if (a.girl) {
+        when (a.hairStyle) {
+            0 -> { // plaits
+                for (side in listOf(-1f, 1f)) {
+                    val x = head.x + side * headR * 0.95f
+                    drawRoundRect(hair, Offset(x - headR * 0.2f, head.y), Size(headR * 0.4f, headR * 1.9f), CornerRadius(headR * 0.2f))
+                    drawCircle(Color(0xFFE5533D), headR * 0.14f, Offset(x, head.y + headR * 1.9f))
+                }
             }
+            1 -> drawOval(hair, Offset(head.x + headR * 0.55f, head.y - headR * 0.2f), Size(headR * 0.8f, headR * 1.7f)) // ponytail
+            else -> drawRoundRect(hair, Offset(head.x - headR * 1.15f, head.y - headR * 0.4f), Size(headR * 2.3f, headR * 1.45f), CornerRadius(headR * 0.4f)) // bob
         }
-        1 -> drawOval(hair, Offset(head.x + headR * 0.55f, head.y - headR * 0.2f), Size(headR * 0.8f, headR * 1.7f)) // ponytail
-        else -> drawRoundRect(hair, Offset(head.x - headR * 1.15f, head.y - headR * 0.4f), Size(headR * 2.3f, headR * 1.45f), CornerRadius(headR * 0.4f)) // bob
     }
 
     // Body in school uniform, with a white collar.
@@ -140,22 +142,24 @@ private fun DrawScope.drawStudent(a: Avatar) {
     val cap = Offset(head.x - headR * 1.05f, head.y - headR * 1.12f)
     val capSize = Size(headR * 2.1f, headR * 1.5f)
     drawArc(hair, 180f, 180f, true, cap, capSize)
-    if (!a.girl) when (a.hairStyle) {
-        1 -> for (i in 0..4) { // spiky
-            val x = head.x - headR * 0.8f + i * headR * 0.4f
-            val spike = Path().apply {
-                moveTo(x - headR * 0.22f, head.y - headR * 0.6f)
-                lineTo(x, head.y - headR * 1.35f)
-                lineTo(x + headR * 0.22f, head.y - headR * 0.6f)
-                close()
+    if (!a.girl) {
+        when (a.hairStyle) {
+            1 -> repeat(5) { i -> // spiky
+                val x = head.x - headR * 0.8f + i * headR * 0.4f
+                val spike = Path().apply {
+                    moveTo(x - headR * 0.22f, head.y - headR * 0.6f)
+                    lineTo(x, head.y - headR * 1.35f)
+                    lineTo(x + headR * 0.22f, head.y - headR * 0.6f)
+                    close()
+                }
+                drawPath(spike, hair)
             }
-            drawPath(spike, hair)
+            2 -> repeat(7) { i -> // curly
+                val angle = Math.toRadians(180.0 + i * 30.0)
+                drawCircle(hair, headR * 0.3f, Offset(head.x + (headR * 0.95f * Math.cos(angle)).toFloat(), head.y + (headR * 0.8f * Math.sin(angle)).toFloat()))
+            }
+            else -> Unit
         }
-        2 -> for (i in 0..6) { // curly
-            val angle = Math.toRadians(180.0 + i * 30.0)
-            drawCircle(hair, headR * 0.3f, Offset(head.x + (headR * 0.95f * Math.cos(angle)).toFloat(), head.y + (headR * 0.8f * Math.sin(angle)).toFloat()))
-        }
-        else -> Unit
     } else {
         // A fringe so the girls' styles read clearly at small sizes.
         drawArc(hair, 200f, 140f, true, Offset(head.x - headR * 0.9f, head.y - headR * 0.95f), Size(headR * 1.8f, headR * 1.1f))

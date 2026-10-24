@@ -22,7 +22,7 @@ object Sentence {
         FieldKind.CUSTOM -> "get $v for “${field.name}”"
     }
 
-    fun article(word: String): String = if (word.firstOrNull()?.lowercaseChar() in "aeiou") "an" else "a"
+    fun article(word: String): String = if (word.firstOrNull()?.lowercaseChar()?.let { it in "aeiou" } == true) "an" else "a"
 
     fun ordinal(n: Int): String {
         val suffix = if (n % 100 in 11..13) "th" else when (n % 10) {
