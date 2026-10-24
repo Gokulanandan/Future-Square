@@ -99,6 +99,7 @@ fun FutureSquareApp(state: GameState) {
                 .imePadding(),
         ) {
             val place = when (state.screen) {
+                Screen.HEROES -> 3
                 Screen.CREATOR -> 0
                 Screen.DESK -> 1
                 else -> 2
@@ -109,6 +110,7 @@ fun FutureSquareApp(state: GameState) {
                 label = "place",
             ) { p ->
                 when (p) {
+                    3 -> HeroPickerScreen(state)
                     0 -> CreatorScreen(state)
                     1 -> DeskScreen(state)
                     else -> PlayScreen(state)
@@ -118,13 +120,113 @@ fun FutureSquareApp(state: GameState) {
     }
 }
 
+// ---------- Pick a hero ----------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HeroPickerScreen(state: GameState) {
+    val forName = state.pickingFor
+    val current = state.currentHeroFor(forName)
+    var picked by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    BackHandler { state.leaveHeroes() }
+    fun pick(id: String) {
+        if (picked != null) return
+        picked = id
+        Sfx.chime()
+        scope.launch {
+            delay(550)
+            state.chooseHero(id)
+        }
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            TextButton(onClick = { state.skipHeroes() }, modifier = Modifier.align(Alignment.CenterEnd)) {
+                Text("Skip ⏩", color = Ink.Paper, fontSize = 16.sp)
+            }
+        }
+        Box(Modifier.popIn()) { Title(if (forName == null) "Who will play?" else "Who plays for $forName?", color = Ink.Paper) }
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            maxItemsInEachRow = 2,
+        ) {
+            Heroes.all.forEachIndexed { i, hero ->
+                HeroCard(
+                    name = hero.name,
+                    tag = "${hero.power} ${hero.powerName}",
+                    order = i,
+                    selected = (picked ?: current) == hero.id,
+                    jumping = picked == hero.id,
+                    onClick = { pick(hero.id) },
+                ) { HeroFigure(hero, it) }
+            }
+            HeroCard(
+                name = if (forName == null) "My student" else "$forName’s student",
+                tag = "🎨 Make your own",
+                order = Heroes.all.size,
+                selected = (picked ?: current) == Heroes.STUDENT,
+                jumping = picked == Heroes.STUDENT,
+                onClick = { pick(Heroes.STUDENT) },
+            ) { StudentFigure(state.studentFor(forName), it) }
+        }
+    }
+}
+
+@Composable
+private fun HeroCard(
+    name: String,
+    tag: String,
+    order: Int,
+    selected: Boolean,
+    jumping: Boolean,
+    onClick: () -> Unit,
+    figure: @Composable (Modifier) -> Unit,
+) {
+    val hop = remember { Animatable(0f) }
+    LaunchedEffect(jumping) {
+        if (jumping) {
+            hop.animateTo(-28f, tween(180))
+            hop.animateTo(0f, spring(dampingRatio = 0.35f))
+        }
+    }
+    val border by animateDpAsState(if (selected) 4.dp else 0.dp, label = "heroBorder")
+    Column(
+        Modifier
+            .popIn(order * 90)
+            .width(150.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Ink.Paper)
+            .border(border, Ink.Red, RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        figure(
+            Modifier
+                .graphicsLayer { translationY = hop.value * density }
+                .width(90.dp)
+                .height(116.dp)
+                .bob(3f, 1000 + order * 130),
+        )
+        Text(name, fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Ink.Blue, textAlign = TextAlign.Center)
+        Text(tag, fontSize = 13.sp, color = Ink.Muted, textAlign = TextAlign.Center)
+    }
+}
+
 // ---------- Make your student ----------
 
 @Composable
 private fun CreatorScreen(state: GameState) {
     var a by remember(state.creatingFor) { mutableStateOf(state.avatarBeingMade()) }
     val forName = state.creatingFor
-    BackHandler(enabled = state.squareDrawn || forName != null) { state.creatingFor = null; state.screen = Screen.FIELDS_CHOICE }
+    BackHandler { state.leaveCreator() }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -202,14 +304,14 @@ private fun DeskScreen(state: GameState) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StudentFigure(state.player, Modifier.width(80.dp).height(110.dp).bob(4f, 1100))
+            CharacterFigure(state.playerLook, Modifier.width(80.dp).height(110.dp).bob(4f, 1100))
             Text(
                 "Tap the notebook!",
                 fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = Ink.Paper,
                 modifier = Modifier.pulse(amount = 0.08f),
             )
         }
-        TextButton(onClick = { state.editStudent() }) { Text("Change my student", color = Ink.Paper) }
+        TextButton(onClick = { state.editHero() }) { Text("Change my hero", color = Ink.Paper) }
     }
 }
 
@@ -246,7 +348,7 @@ private fun PlayScreen(state: GameState) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                StudentFigure(state.subject, Modifier.width(40.dp).height(52.dp).bob(2f, 900))
+                CharacterFigure(state.subjectLook, Modifier.width(40.dp).height(52.dp).bob(2f, 900))
                 Text(
                     if (state.who == YOU) "Your future square" else "${state.who}’s future square",
                     fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Ink.Paper,
@@ -261,10 +363,10 @@ private fun PlayScreen(state: GameState) {
                         .padding(8.dp),
                 )
             }
-            NotebookPage(state.fields, state.marks, draw.value, Modifier.fillMaxWidth())
+            NotebookPage(state.fields, state.marks, draw.value, state.subjectLook, Modifier.fillMaxWidth())
             Panel {
                 if (!state.squareDrawn) {
-                    Say("Drawing the future square… ✏️")
+                    Say("Drawing the future square… ${state.subjectLook.power}")
                 } else {
                     AnimatedContent(
                         targetState = state.screen,
@@ -305,8 +407,8 @@ private fun ColumnScope.FieldsChoicePanel(state: GameState) {
         BigCard("📒", "Usual fields", Modifier.weight(1f), order = 0) { state.screen = Screen.VALUES }
         BigCard("✨", "Pick my own", Modifier.weight(1f), order = 1) { state.screen = Screen.PICK_FIELDS }
     }
-    TextButton(onClick = { state.editStudent() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-        Text(if (state.who == YOU) "Change my student" else "Change ${state.who}’s student", color = Ink.BlueSoft)
+    TextButton(onClick = { state.editHero() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+        Text(if (state.who == YOU) "Change my hero" else "Change ${state.who}’s hero", color = Ink.BlueSoft)
     }
 }
 
@@ -506,6 +608,11 @@ private fun ColumnScope.BeginPanel(state: GameState) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // The hero bounces along with every line drawn.
+        CharacterFigure(
+            state.subjectLook,
+            Modifier.width(44.dp).height(58.dp).bob(if (drawing) 5f else 2f, if (drawing) 160 else 900),
+        )
         FlowRow(
             Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -584,7 +691,7 @@ private fun ColumnScope.StrikingPanel(state: GameState) {
             }
             val hit = ring[step.struck]
             struck = struck + hit
-            state.marks = BoardMarks(struck)
+            state.marks = BoardMarks(struck, zap = if (state.skip) null else hit)
             last = valueOf(hit)
             if (!state.skip) {
                 Sfx.scratch()
@@ -613,7 +720,7 @@ private fun ColumnScope.StrikingPanel(state: GameState) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("✏️", fontSize = 40.sp, modifier = Modifier.bob(4f, 220))
+        CharacterFigure(state.subjectLook, Modifier.width(48.dp).height(62.dp).bob(4f, 220))
         Column(Modifier.weight(1f)) {
             Text("Counting to ${state.lines}…", fontFamily = Hand, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Ink.Blue)
             AnimatedContent(
@@ -658,7 +765,7 @@ private fun ColumnScope.ResultPanel(state: GameState) {
         modifier = Modifier.popIn(),
     )
     TypewriterText(sentence, color = Ink.Blue, fontSize = 30.sp, lineHeight = 34.sp)
-    Box(Modifier.popIn(400)) { FuturePicture(state.subject, state.fields, p.winners) }
+    Box(Modifier.popIn(400)) { FuturePicture(state.subjectLook, state.fields, p.winners) }
     Column(Modifier.popIn(1800), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         PrimaryButton("📤 Share this future") {
             val send = Intent(Intent.ACTION_SEND).apply {
@@ -689,7 +796,7 @@ private fun ColumnScope.WhoPanel(state: GameState) {
         modifier = Modifier.fillMaxWidth(),
     )
     PrimaryButton("Let’s go", enabled = ok) { state.newRound(name.trim()) }
-    SecondaryButton("Make their student first", enabled = ok) { state.makeFriendStudent(name) }
+    SecondaryButton("🦸 Pick their hero", enabled = ok) { state.pickFriendHero(name) }
 }
 
 private fun dogCaption(reaction: Reaction, kind: FieldKind, value: String): String {

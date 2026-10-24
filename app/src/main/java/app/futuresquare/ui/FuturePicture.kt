@@ -72,10 +72,10 @@ object Art {
     }
 }
 
-/** The picture of the future: the student, dressed for the job, at their house, with their friend. */
+/** The picture of the future: the hero (or student), dressed for the job, at their house, with their friend. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FuturePicture(student: Avatar, fields: List<Field>, winners: Map<Int, String>, modifier: Modifier = Modifier) {
+fun FuturePicture(look: Look, fields: List<Field>, winners: Map<Int, String>, modifier: Modifier = Modifier) {
     fun winner(kind: FieldKind) = fields.firstOrNull { it.kind == kind }?.let { winners[it.id] }
     val house = winner(FieldKind.HOUSE)
     val ambition = winner(FieldKind.AMBITION)
@@ -104,7 +104,7 @@ fun FuturePicture(student: Avatar, fields: List<Field>, winners: Map<Int, String
                 }
             }
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).width(120.dp).height(160.dp)) {
-                StudentFigure(student, Modifier.fillMaxSize().bob(3f, 900))
+                CharacterFigure(look, Modifier.fillMaxSize().bob(3f, 900))
                 if (ambition != null) {
                     Text(Art.of(FieldKind.AMBITION, ambition), fontSize = 34.sp, modifier = Modifier.align(Alignment.TopEnd).popIn(900))
                 }

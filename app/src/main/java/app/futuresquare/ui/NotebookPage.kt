@@ -20,7 +20,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,9 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.futuresquare.core.Field
@@ -48,6 +61,8 @@ data class BoardMarks(
     val pencilAt: Slot? = null,
     val count: Int? = null,
     val winners: Set<Slot> = emptySet(),
+    /** The value just struck, where the hero fires off its power. */
+    val zap: Slot? = null,
 )
 
 /** The notebook's last page: the square, its X, and the fields written around it. */
@@ -56,8 +71,13 @@ fun NotebookPage(
     fields: List<Field>,
     marks: BoardMarks,
     drawProgress: Float,
+    look: Look,
     modifier: Modifier = Modifier,
 ) {
+    // Where each value and the square sit on the page, so the hero can move between them.
+    val spots = remember { Spots() }
+    // Flips once after the first layout so the hero appears without waiting for another change.
+    var laidOut by remember { mutableStateOf(false) }
     Box(
         modifier
             .clip(RoundedCornerShape(6.dp))
@@ -71,7 +91,11 @@ fun NotebookPage(
                 }
                 drawLine(Ink.Margin, Offset(18.dp.toPx(), 0f), Offset(18.dp.toPx(), size.height), 1.5.dp.toPx())
             }
-            .padding(horizontal = 12.dp, vertical = 16.dp),
+            .padding(horizontal = 12.dp, vertical = 16.dp)
+            .onGloballyPositioned {
+                spots.page = it
+                if (!laidOut) laidOut = true
+            },
     ) {
         val showText = drawProgress >= 1f
         Column(
@@ -81,29 +105,133 @@ fun NotebookPage(
         ) {
             fun on(side: Side) = if (showText) fields.filter { it.side == side } else emptyList()
             // Inner fields sit next to the square, outer ones further out.
-            on(Side.TOP).reversed().forEach { FieldGroup(it, vertical = false, labelFirst = true, marks) }
+            on(Side.TOP).reversed().forEach { FieldGroup(it, vertical = false, labelFirst = true, marks) { s, c -> spots.values[s] = c } }
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                on(Side.LEFT).reversed().forEach { FieldGroup(it, vertical = true, labelFirst = true, marks) }
+                on(Side.LEFT).reversed().forEach { FieldGroup(it, vertical = true, labelFirst = true, marks) { s, c -> spots.values[s] = c } }
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     SquareDrawing(
                         drawProgress,
-                        Modifier.sizeIn(maxWidth = 200.dp, maxHeight = 200.dp).fillMaxWidth().aspectRatio(1f),
+                        Modifier
+                            .sizeIn(maxWidth = 200.dp, maxHeight = 200.dp)
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .onGloballyPositioned { spots.square = it },
                     )
                 }
-                on(Side.RIGHT).forEach { FieldGroup(it, vertical = true, labelFirst = true, marks) }
+                on(Side.RIGHT).forEach { FieldGroup(it, vertical = true, labelFirst = true, marks) { s, c -> spots.values[s] = c } }
             }
-            on(Side.BOTTOM).forEach { FieldGroup(it, vertical = false, labelFirst = false, marks) }
+            on(Side.BOTTOM).forEach { FieldGroup(it, vertical = false, labelFirst = false, marks) { s, c -> spots.values[s] = c } }
         }
+
+        // The hero stands on the pencil tip while the square is drawn, then on each value it counts.
+        // In between it waits in the middle of the X.
+        val density = LocalDensity.current
+        val heroW = with(density) { 30.dp.toPx() }
+        val heroH = with(density) { 40.dp.toPx() }
+        val square = spots.rect(spots.square)?.takeIf { laidOut }
+        val tip = square?.let { r -> squareTip(drawProgress)?.let { Offset(r.left + it.x * r.width, r.top + it.y * r.height) } }
+        val spot = (marks.pencilAt ?: marks.zap)?.let { spots.rect(spots.values[it]) }?.let { Offset(it.center.x, it.top) }
+        val rest = square?.takeIf { drawProgress >= 1f }?.let { Offset(it.center.x, it.center.y + heroH / 2) }
+        val target = tip ?: spot ?: rest
+        if (target != null) {
+            val feet by animateOffsetAsState(
+                target,
+                if (tip != null) snap() else spring(dampingRatio = 0.5f, stiffness = 500f),
+                label = "hero",
+            )
+            CharacterFigure(
+                look,
+                Modifier
+                    .offset { IntOffset((feet.x - heroW / 2).roundToInt(), (feet.y - heroH).roundToInt()) }
+                    .size(30.dp, 40.dp)
+                    .bob(2f, 240),
+            )
+        }
+        marks.zap?.let { z ->
+            spots.rect(spots.values[z])?.let { r -> key(z) { PowerBurst(look.power, r.center) } }
+        }
+    }
+}
+
+/** Layout positions, read when the hero moves rather than kept as state, so scrolling recomposes nothing. */
+private class Spots {
+    var page: LayoutCoordinates? = null
+    var square: LayoutCoordinates? = null
+    val values = HashMap<Slot, LayoutCoordinates>()
+
+    fun rect(c: LayoutCoordinates?): Rect? {
+        val p = page ?: return null
+        if (c == null || !c.isAttached || !p.isAttached) return null
+        return p.localBoundingBoxOf(c, clipBounds = false)
+    }
+}
+
+/** Where the pencil tip is (0..1 across the square), or null when the square isn't being drawn. */
+private fun squareTip(progress: Float): Offset? {
+    if (progress <= 0f || progress >= 1f) return null
+    val i = 0.04f
+    val tl = Offset(i, i)
+    val tr = Offset(1 - i, i)
+    val br = Offset(1 - i, 1 - i)
+    val bl = Offset(i, 1 - i)
+    val segments = listOf(tl to tr, tr to br, br to bl, bl to tl, tl to br, tr to bl)
+    val k = (progress * segments.size).toInt().coerceAtMost(segments.lastIndex)
+    val (a, b) = segments[k]
+    return lerp(a, b, progress * segments.size - k)
+}
+
+/** The hero's power going off on the struck value: a big emoji and a ring of small ones. */
+@Composable
+private fun PowerBurst(power: String, center: Offset) {
+    val t = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { t.animateTo(1f, tween(650)) }
+    val density = LocalDensity.current
+    val half = with(density) { 18.dp.toPx() }
+    val reach = with(density) { 34.dp.toPx() }
+    Box(
+        Modifier
+            .offset { IntOffset((center.x - half).roundToInt(), (center.y - half).roundToInt()) }
+            .size(36.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        repeat(6) { i ->
+            val angle = Math.toRadians(i * 60.0 - 90.0)
+            Text(
+                power,
+                fontSize = 14.sp,
+                modifier = Modifier.graphicsLayer {
+                    translationX = (Math.cos(angle) * reach * t.value).toFloat()
+                    translationY = (Math.sin(angle) * reach * t.value).toFloat()
+                    alpha = 1f - t.value
+                },
+            )
+        }
+        Text(
+            power,
+            fontSize = 26.sp,
+            modifier = Modifier.graphicsLayer {
+                val s = 0.4f + 1.4f * t.value
+                scaleX = s
+                scaleY = s
+                alpha = (1.3f - t.value).coerceIn(0f, 1f)
+            },
+        )
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FieldGroup(field: Field, vertical: Boolean, labelFirst: Boolean, marks: BoardMarks) {
+private fun FieldGroup(
+    field: Field,
+    vertical: Boolean,
+    labelFirst: Boolean,
+    marks: BoardMarks,
+    onPlaced: (Slot, LayoutCoordinates) -> Unit,
+) {
     val left = field.values.indices.count { Slot(field.id, it) !in marks.struck }
     val closed = marks.struck.isNotEmpty() && left <= 1
     val label = @Composable {
@@ -125,6 +253,7 @@ private fun FieldGroup(field: Field, vertical: Boolean, labelFirst: Boolean, mar
                 pencil = slot == marks.pencilAt,
                 count = if (slot == marks.pencilAt) marks.count else null,
                 winner = slot in marks.winners,
+                onPlaced = { onPlaced(slot, it) },
             )
         }
         if (field.values.isEmpty()) Text("…", fontFamily = Hand, fontSize = 24.sp, color = Ink.Muted)
@@ -141,7 +270,15 @@ private fun FieldGroup(field: Field, vertical: Boolean, labelFirst: Boolean, mar
 }
 
 @Composable
-private fun ValueText(text: String, order: Int, struck: Boolean, pencil: Boolean, count: Int?, winner: Boolean) {
+private fun ValueText(
+    text: String,
+    order: Int,
+    struck: Boolean,
+    pencil: Boolean,
+    count: Int?,
+    winner: Boolean,
+    onPlaced: (LayoutCoordinates) -> Unit,
+) {
     val strike by animateFloatAsState(if (struck) 1f else 0f, tween(320), label = "strike")
     val ring by animateFloatAsState(if (winner) 1f else 0f, tween(600), label = "winner")
     val ink by animateColorAsState(if (struck) Ink.Muted else Ink.Blue, tween(320), label = "ink")
@@ -156,6 +293,7 @@ private fun ValueText(text: String, order: Int, struck: Boolean, pencil: Boolean
             color = ink,
             modifier = Modifier
                 .padding(top = 6.dp)
+                .onGloballyPositioned(onPlaced)
                 .graphicsLayer {
                     scaleX = lift
                     scaleY = lift
@@ -179,25 +317,21 @@ private fun ValueText(text: String, order: Int, struck: Boolean, pencil: Boolean
                     }
                 },
         )
-        if (pencil) {
-            Text("✏️", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-8).dp).bob(3f, 160))
-            if (count != null) {
-                Text(
-                    "$count",
-                    color = Ink.Red,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.TopStart).offset(x = (-6).dp, y = (-6).dp).popIn(),
-                )
-            }
+        if (pencil && count != null) {
+            Text(
+                "$count",
+                color = Ink.Red,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopStart).offset(x = (-6).dp, y = (-6).dp).popIn(),
+            )
         }
     }
 }
 
-/** Draws the square then the X, stroke by stroke, with the pencil at the tip. */
+/** Draws the square then the X, stroke by stroke; the hero rides the tip. */
 @Composable
 private fun SquareDrawing(progress: Float, modifier: Modifier) {
-    val measurer = rememberTextMeasurer()
     Canvas(modifier) {
         val inset = size.minDimension * 0.04f
         val tl = Offset(inset, inset)
@@ -205,15 +339,9 @@ private fun SquareDrawing(progress: Float, modifier: Modifier) {
         val br = Offset(size.width - inset, size.height - inset)
         val bl = Offset(inset, size.height - inset)
         val segments = listOf(tl to tr, tr to br, br to bl, bl to tl, tl to br, tr to bl)
-        var tip: Offset? = null
         segments.forEachIndexed { k, (a, b) ->
             val t = (progress * segments.size - k).coerceIn(0f, 1f)
-            if (t > 0f) {
-                val end = lerp(a, b, t)
-                drawLine(Ink.Blue, a, end, 3.dp.toPx(), StrokeCap.Round)
-                if (t < 1f) tip = end
-            }
+            if (t > 0f) drawLine(Ink.Blue, a, lerp(a, b, t), 3.dp.toPx(), StrokeCap.Round)
         }
-        tip?.let { drawText(measurer, "✏️", topLeft = Offset(it.x, it.y - 22.dp.toPx())) }
     }
 }
