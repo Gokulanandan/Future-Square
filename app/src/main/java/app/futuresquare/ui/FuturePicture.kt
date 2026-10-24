@@ -42,6 +42,22 @@ object Art {
         "london" to "🎡", "ooty" to "⛰️", "japan" to "🗾", "the moon" to "🌙", "paris" to "🗼",
     )
 
+    /** The emoji for a value the game knows, or null for values the player typed. */
+    fun known(value: String): String? = byValue[value.trim().lowercase()]
+
+    fun kindIcon(kind: FieldKind): String = when (kind) {
+        FieldKind.AMBITION -> "🎯"
+        FieldKind.RANK -> "🏅"
+        FieldKind.HOUSE -> "🏠"
+        FieldKind.FRIEND -> "🤝"
+        FieldKind.FOOD -> "🍛"
+        FieldKind.PET -> "🐾"
+        FieldKind.VEHICLE -> "🚗"
+        FieldKind.SUPERPOWER -> "✨"
+        FieldKind.PLACE -> "🗺️"
+        FieldKind.CUSTOM -> "✏️"
+    }
+
     fun of(kind: FieldKind, value: String): String = byValue[value.trim().lowercase()] ?: when (kind) {
         FieldKind.AMBITION -> "⭐"
         FieldKind.RANK -> "🏅"
@@ -80,17 +96,17 @@ fun FuturePicture(student: Avatar, fields: List<Field>, winners: Map<Int, String
                 .height(230.dp)
                 .background(Brush.verticalGradient(0f to Color(0xFF8FD0FF), 0.72f to Color(0xFFDDF1FF), 0.72f to Color(0xFF8BCB6A), 1f to Color(0xFF6DB252))),
         ) {
-            Text("☀️", fontSize = 30.sp, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
+            Text("☀️", fontSize = 30.sp, modifier = Modifier.align(Alignment.TopStart).padding(12.dp).bob(2f, 2000))
             if (house != null) {
-                Column(Modifier.align(Alignment.BottomStart).padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.align(Alignment.BottomStart).padding(10.dp).popIn(500), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(Art.of(FieldKind.HOUSE, house), fontSize = 70.sp)
                     Caption(house)
                 }
             }
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).width(120.dp).height(160.dp)) {
-                StudentFigure(student, Modifier.fillMaxSize())
+                StudentFigure(student, Modifier.fillMaxSize().bob(3f, 900))
                 if (ambition != null) {
-                    Text(Art.of(FieldKind.AMBITION, ambition), fontSize = 34.sp, modifier = Modifier.align(Alignment.TopEnd))
+                    Text(Art.of(FieldKind.AMBITION, ambition), fontSize = 34.sp, modifier = Modifier.align(Alignment.TopEnd).popIn(900))
                 }
             }
             if (friend != null) {
@@ -103,6 +119,7 @@ fun FuturePicture(student: Avatar, fields: List<Field>, winners: Map<Int, String
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(10.dp)
+                        .popIn(1200)
                         .background(Color.White, RoundedCornerShape(12.dp))
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
@@ -114,10 +131,10 @@ fun FuturePicture(student: Avatar, fields: List<Field>, winners: Map<Int, String
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ambition?.let { Sticker(Art.of(FieldKind.AMBITION, it), it) }
-                extras.forEach { (f, v) ->
+                ambition?.let { Sticker(Art.of(FieldKind.AMBITION, it), it, 0) }
+                extras.forEachIndexed { i, (f, v) ->
                     val label = if (f.kind == FieldKind.RANK) v.toIntOrNull()?.let { Sentence.ordinal(it) + " rank" } ?: v else v
-                    Sticker(Art.of(f.kind, v), label)
+                    Sticker(Art.of(f.kind, v), label, i + 1)
                 }
             }
         }
@@ -125,8 +142,8 @@ fun FuturePicture(student: Avatar, fields: List<Field>, winners: Map<Int, String
 }
 
 @Composable
-private fun Sticker(art: String, label: String) {
-    Column(Modifier.width(76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun Sticker(art: String, label: String, order: Int) {
+    Column(Modifier.width(76.dp).popIn(1400 + order * 150), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { Text(art, fontSize = 32.sp) }
         Text(label, fontSize = 12.sp, color = Ink.Muted, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold)
     }

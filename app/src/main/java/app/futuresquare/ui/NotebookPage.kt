@@ -2,7 +2,6 @@ package app.futuresquare.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +13,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.drawText
@@ -114,6 +120,7 @@ private fun FieldGroup(field: Field, vertical: Boolean, labelFirst: Boolean, mar
             val slot = Slot(field.id, i)
             ValueText(
                 v,
+                order = i,
                 struck = slot in marks.struck,
                 pencil = slot == marks.pencilAt,
                 count = if (slot == marks.pencilAt) marks.count else null,
@@ -134,41 +141,53 @@ private fun FieldGroup(field: Field, vertical: Boolean, labelFirst: Boolean, mar
 }
 
 @Composable
-private fun ValueText(text: String, struck: Boolean, pencil: Boolean, count: Int?, winner: Boolean) {
-    Box(contentAlignment = Alignment.Center) {
+private fun ValueText(text: String, order: Int, struck: Boolean, pencil: Boolean, count: Int?, winner: Boolean) {
+    val strike by animateFloatAsState(if (struck) 1f else 0f, tween(320), label = "strike")
+    val ring by animateFloatAsState(if (winner) 1f else 0f, tween(600), label = "winner")
+    val ink by animateColorAsState(if (struck) Ink.Muted else Ink.Blue, tween(320), label = "ink")
+    val glow by animateColorAsState(if (pencil) Ink.Hilite else Color.Transparent, tween(90), label = "glow")
+    val lift by animateFloatAsState(if (pencil) 1.15f else 1f, spring(dampingRatio = 0.5f), label = "lift")
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.popIn(delayMs = order * 70)) {
         Text(
             text,
             fontFamily = Hand,
             fontWeight = FontWeight.SemiBold,
             fontSize = 24.sp,
-            color = if (struck) Ink.Muted else Ink.Blue,
+            color = ink,
             modifier = Modifier
                 .padding(top = 6.dp)
-                .background(if (pencil) Ink.Hilite else Color.Transparent, RoundedCornerShape(4.dp))
-                .then(if (winner) Modifier.border(2.dp, Ink.Red, CircleShape) else Modifier)
-                .padding(horizontal = if (winner) 8.dp else 4.dp)
+                .graphicsLayer {
+                    scaleX = lift
+                    scaleY = lift
+                }
+                .background(glow, RoundedCornerShape(4.dp))
+                .padding(horizontal = 6.dp)
                 .drawWithContent {
                     drawContent()
-                    if (struck) {
-                        drawLine(
-                            Ink.Red,
-                            Offset(-2f, size.height * 0.62f),
-                            Offset(size.width + 2f, size.height * 0.45f),
-                            3.dp.toPx(),
-                            StrokeCap.Round,
+                    if (strike > 0f) {
+                        val a = Offset(-2f, size.height * 0.62f)
+                        val b = Offset(size.width + 2f, size.height * 0.45f)
+                        drawLine(Ink.Red, a, lerp(a, b, strike), 3.dp.toPx(), StrokeCap.Round)
+                    }
+                    if (ring > 0f) {
+                        val pad = 3.dp.toPx()
+                        drawArc(
+                            Ink.Red, -90f, 360f * ring, false,
+                            Offset(-pad, -pad), Size(size.width + 2 * pad, size.height + 2 * pad),
+                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
                         )
                     }
                 },
         )
         if (pencil) {
-            Text("✏️", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-6).dp))
+            Text("✏️", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-8).dp).bob(3f, 160))
             if (count != null) {
                 Text(
                     "$count",
                     color = Ink.Red,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.TopStart).offset(x = (-6).dp, y = (-4).dp),
+                    modifier = Modifier.align(Alignment.TopStart).offset(x = (-6).dp, y = (-6).dp).popIn(),
                 )
             }
         }
