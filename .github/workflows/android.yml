@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_UPLOAD_KEY: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +35,31 @@ jobs:
         with:
           name: future-square-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      # The Play Store build. It only runs once the upload key is saved as GitHub secrets
+      # (see docs/PUBLISHING.md), so builds keep working before that.
+      - name: Build the signed Play Store bundle
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+          ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
+          ADMOB_INTERSTITIAL_ID: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          RELEASE_KEYSTORE="$RUNNER_TEMP/upload.jks" ./gradlew :app:bundleRelease
+          rm "$RUNNER_TEMP/upload.jks"
+
+      - name: Upload the Play Store bundle
+        if: hashFiles('app/build/outputs/bundle/release/app-release.aab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: future-square-play-bundle
+          path: app/build/outputs/bundle/release/app-release.aab
 
       # On main, publish the APK as a release so it can be downloaded straight from a phone.
       - name: Publish the latest APK

@@ -775,16 +775,19 @@ private fun ColumnScope.ResultPanel(state: GameState) {
             context.startActivity(Intent.createChooser(send, "Share your future"))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BigCard("🔁", "Play again", Modifier.weight(1f), order = 0) { state.newRound(YOU) }
+            BigCard("🔁", "Play again", Modifier.weight(1f), order = 0) { Ads.betweenGames(context) { state.newRound(YOU) } }
             BigCard("🧑‍🤝‍🧑", "Predict a friend", Modifier.weight(1f), order = 1) { state.screen = Screen.WHO }
         }
     }
+    AdBanner(Modifier.popIn(1800))
 }
 
 @Composable
 private fun ColumnScope.WhoPanel(state: GameState) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     val ok = name.isNotBlank() && !name.trim().equals(YOU, ignoreCase = true)
+    fun go() = Ads.betweenGames(context) { state.newRound(name.trim()) }
     Say("Whose future? 🔮")
     OutlinedTextField(
         value = name,
@@ -792,10 +795,10 @@ private fun ColumnScope.WhoPanel(state: GameState) {
         placeholder = { Text("Their name") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { if (ok) state.newRound(name.trim()) }),
+        keyboardActions = KeyboardActions(onDone = { if (ok) go() }),
         modifier = Modifier.fillMaxWidth(),
     )
-    PrimaryButton("Let’s go", enabled = ok) { state.newRound(name.trim()) }
+    PrimaryButton("Let’s go", enabled = ok) { go() }
     SecondaryButton("🦸 Pick their hero", enabled = ok) { state.pickFriendHero(name) }
 }
 
