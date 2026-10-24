@@ -1,0 +1,46 @@
+name: Android build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test the game engine
+        run: ./gradlew :core:test
+
+      - name: Build the APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: future-square-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # On main, publish the APK as a release so it can be downloaded straight from a phone.
+      - name: Publish the latest APK
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk future-square.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest future-square.apk --title "Future Square (latest build)" \
+            --notes "Debug build of ${GITHUB_SHA::7}. Download future-square.apk on your Android phone and open it to install." --prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
